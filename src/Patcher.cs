@@ -21,14 +21,59 @@ static class Program
     {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        Application.Run(new MainForm());
+        // Changing the language closes the window and opens a new one carrying over its state.
+        MainForm form = null;
+        do
+        {
+            L.Load();
+            form = new MainForm(form);
+            Application.Run(form);
+        } while (form.RestartRequested);
     }
 }
 
-// English by default, Russian when the Windows UI language is Russian.
+// key=value settings next to the exe.
+static class Settings
+{
+    static string FilePath { get { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SFM_Vulkan_Patcher.ini"); } }
+
+    static List<string> Lines()
+    {
+        try { return new List<string>(File.ReadAllLines(FilePath)); }
+        catch { return new List<string>(); }
+    }
+
+    public static string Get(string key, string def)
+    {
+        foreach (string line in Lines())
+            if (line.StartsWith(key + "=")) return line.Substring(key.Length + 1).Trim();
+        return def;
+    }
+
+    public static void Set(string key, string value)
+    {
+        List<string> lines = Lines();
+        lines.RemoveAll(delegate(string line) { return line.StartsWith(key + "="); });
+        lines.Add(key + "=" + value);
+        try { File.WriteAllLines(FilePath, lines.ToArray()); }
+        catch { } // read-only folder: the choice just won't be remembered
+    }
+}
+
+// Interface language: "auto" means Russian when the Windows UI language is Russian, English otherwise.
 static class L
 {
-    public static readonly bool Ru = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ru";
+    public static readonly string[] Ids = { "auto", "en", "ru" };
+    public static string Setting = "auto";
+    public static bool Ru;
+
+    public static void Load()
+    {
+        Setting = Settings.Get("language", "auto");
+        if (Array.IndexOf(Ids, Setting) < 0) Setting = "auto";
+        Ru = Setting == "ru" || (Setting == "auto" && CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ru");
+    }
+
     public static string T(string en, string ru) { return Ru ? ru : en; }
 }
 
@@ -59,7 +104,7 @@ class MainForm : Form
         "d3d9.memoryTrackTest = False\r\n";
 
     // Archived convars (mat_picmip, mat_forceaniso...) persist in SFM's config, so every preset sets them explicitly.
-    static readonly Preset[] Presets =
+    readonly Preset[] Presets = // per instance: names depend on the current language
     {
         new Preset(L.T("Minimum", "Минимальный"), "min",
             L.T("Most free memory: half-resolution textures, 1024 shadows, no expensive water. For very heavy scenes.",
@@ -89,6 +134,9 @@ class MainForm : Form
     ComboBox cbPreset, cbRes;
     CheckBox chkHud;
     TextBox txtArgs;
+    ComboBox cbLang;
+
+    public bool RestartRequested;
 
     static string AppVersion
     {
@@ -99,7 +147,7 @@ class MainForm : Form
         }
     }
 
-    public MainForm()
+    public MainForm(MainForm prev)
     {
         Text = "SFM Vulkan Patcher " + AppVersion + " (DXVK " + DxvkVersion + ")";
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -156,16 +204,40 @@ class MainForm : Form
         cbTheme = new ComboBox { Left = 124, Top = 464, Width = 150, DropDownStyle = ComboBoxStyle.DropDownList };
         cbTheme.Items.AddRange(new object[] { L.T("System", "Как в системе"), L.T("Light", "Светлая"), L.T("Dark", "Тёмная") });
 
-        Controls.AddRange(new Control[] { gVk, gRun, lblPath, btnDir, l4, cbTheme });
+        // --- Language (language names are not translated)
+        Label l5 = new Label { Text = L.T("Language:", "Язык:"), Left = 290, Top = 468, Width = 80 };
+        cbLang = new ComboBox { Left = 374, Top = 464, Width = 174, DropDownStyle = ComboBoxStyle.DropDownList };
+        cbLang.Items.AddRange(new object[] { L.T("System", "Как в системе"), "English", "Русский" });
 
-        cbPreset.SelectedIndex = 2;
-        cbRes.SelectedIndex = 1;
+        Controls.AddRange(new Control[] { gVk, gRun, lblPath, btnDir, l4, cbTheme, l5, cbLang });
 
-        gameDir = FindGameDir();
+        if (prev != null)
+        {
+            StartPosition = FormStartPosition.Manual;
+            Location = prev.Location;
+            gameDir = prev.gameDir;
+            cbPreset.SelectedIndex = prev.cbPreset.SelectedIndex;
+            cbRes.SelectedIndex = prev.cbRes.SelectedIndex;
+            txtArgs.Text = prev.txtArgs.Text; // keep manual edits
+            chkHud.Checked = prev.chkHud.Checked;
+        }
+        else
+        {
+            cbPreset.SelectedIndex = 2;
+            cbRes.SelectedIndex = 1;
+            gameDir = FindGameDir();
+        }
 
-        cbTheme.SelectedIndex = Array.IndexOf(ThemeIds, LoadThemeSetting());
+        cbTheme.SelectedIndex = Array.IndexOf(ThemeIds, Settings.Get("theme", "auto"));
         if (cbTheme.SelectedIndex < 0) cbTheme.SelectedIndex = 0;
-        cbTheme.SelectedIndexChanged += delegate { SaveThemeSetting(ThemeIds[cbTheme.SelectedIndex]); ApplyTheme(); };
+        cbTheme.SelectedIndexChanged += delegate { Settings.Set("theme", ThemeIds[cbTheme.SelectedIndex]); ApplyTheme(); };
+        cbLang.SelectedIndex = Array.IndexOf(L.Ids, L.Setting);
+        cbLang.SelectedIndexChanged += delegate
+        {
+            Settings.Set("language", L.Ids[cbLang.SelectedIndex]);
+            RestartRequested = true;
+            Close();
+        };
         SystemEvents.UserPreferenceChanged += OnSystemPrefsChanged;
         ApplyTheme();
     }
@@ -182,25 +254,6 @@ class MainForm : Form
     static readonly Color DarkBorder = Color.FromArgb(90, 90, 96);
     static readonly Color DarkText = Color.FromArgb(230, 230, 230);
     static readonly Color DarkMuted = Color.FromArgb(155, 155, 160);
-
-    string SettingsPath { get { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SFM_Vulkan_Patcher.ini"); } }
-
-    string LoadThemeSetting()
-    {
-        try
-        {
-            foreach (string line in File.ReadAllLines(SettingsPath))
-                if (line.StartsWith("theme=")) return line.Substring(6).Trim();
-        }
-        catch { }
-        return "auto";
-    }
-
-    void SaveThemeSetting(string id)
-    {
-        try { File.WriteAllText(SettingsPath, "theme=" + id + "\r\n"); }
-        catch { } // read-only folder: the choice just won't be remembered
-    }
 
     static bool SystemUsesDark()
     {
