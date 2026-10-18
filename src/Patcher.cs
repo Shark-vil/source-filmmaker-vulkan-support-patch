@@ -102,6 +102,7 @@ class MainForm : Form
     public MainForm()
     {
         Text = "SFM Vulkan Patcher " + AppVersion + " (DXVK " + DxvkVersion + ")";
+        Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         Font = new Font("Segoe UI", 9f);
         AutoScaleMode = AutoScaleMode.Font;
         FormBorderStyle = FormBorderStyle.FixedSingle;
