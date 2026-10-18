@@ -49,7 +49,7 @@ if (-not (Test-Path $csc)) { $csc = "$env:WINDIR\Microsoft.NET\Framework\v4.0.30
 $exe = Join-Path $out "SFM_Vulkan_Patcher.exe"
 
 & $csc /nologo /target:winexe /platform:anycpu /optimize+ /codepage:65001 "/out:$exe" "/win32icon:$(Join-Path $root 'icon.ico')" "/resource:$dll,dxvk_d3d9.dll" `
-    /r:System.Windows.Forms.dll /r:System.Drawing.dll (Join-Path $root "src\Patcher.cs") $versionCs
+    /r:System.Windows.Forms.dll /r:System.Drawing.dll (Join-Path $root "src\*.cs") $versionCs
 if ($LASTEXITCODE) { throw "csc failed" }
 
 $exeHash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
