@@ -1,0 +1,4 @@
+build/
+*.exe
+*.dll
+SFM_Vulkan_Patcher.ini
