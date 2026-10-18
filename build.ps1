@@ -37,6 +37,8 @@ $versionCs = Join-Path $out "Version.cs"
 using System.Reflection;
 [assembly: AssemblyTitle("SFM Vulkan Patcher")]
 [assembly: AssemblyProduct("SFM Vulkan Patcher")]
+[assembly: AssemblyCompany("Shark_vil")]
+[assembly: AssemblyCopyright("Copyright (c) Shark_vil")]
 [assembly: AssemblyVersion("$numeric")]
 [assembly: AssemblyFileVersion("$numeric")]
 [assembly: AssemblyInformationalVersion("$clean")]
